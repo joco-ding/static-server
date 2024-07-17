@@ -21,7 +21,7 @@ type Config struct {
 }
 
 const (
-	Version = "1.0.4"
+	Version = "1.0.7"
 )
 
 var (
@@ -129,6 +129,7 @@ func main() {
 
 	// Membuat router Gin
 	r := gin.New()
+
 	r.SetTrustedProxies(proxies)
 	// Middleware untuk mencatat log dengan IP asli klien dan hostname
 	r.Use(gin.Recovery()) // Menambahkan middleware recovery bawaan gin
@@ -144,13 +145,15 @@ func main() {
 		duration := time.Since(startTime)
 
 		// Mencatat log
-		fmt.Printf("[LOG] %d | %s | %s | %s%s | %v\n",
-			c.Writer.Status(),
-			clientIP,
-			c.Request.Method,
-			host,
-			c.Request.RequestURI,
-			duration)
+		if c.Writer.Status() != 200 {
+			fmt.Printf("[LOG] %d | %s | %s | %s%s | %v\n",
+				c.Writer.Status(),
+				clientIP,
+				c.Request.Method,
+				host,
+				c.Request.RequestURI,
+				duration)
+		}
 	})
 
 	r.Use(func(c *gin.Context) {
@@ -198,7 +201,18 @@ func main() {
 		c.Abort()
 	})
 
-	// Menjalankan server di port yang diberikan
+	// Menjalankan server dengan konfigurasi custom untuk menonaktifkan keep-alive
+	server := &http.Server{
+		Addr:         fmt.Sprintf(":%s", *port),
+		Handler:      r,
+		IdleTimeout:  0, // Disable keep-alive by setting IdleTimeout to 0
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+	server.SetKeepAlivesEnabled(false)
+
 	fmt.Printf("Static Server Version %s Listening on: %s\n", Version, *port)
-	r.Run(fmt.Sprintf(":%s", *port))
+	if err := server.ListenAndServe(); err != nil {
+		log.Fatalf("Server failed: %s\n", err)
+	}
 }
